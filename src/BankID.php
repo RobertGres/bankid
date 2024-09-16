@@ -3,17 +3,18 @@
 namespace LJSystem\BankID;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\RequestOptions;
 use GuzzleHttp\Exception\RequestException;
 
 class BankID
 {
     const ENVIRONMENT_PRODUCTION = 'prod';
-    const ENVIRONMENT_TEST = 'test';
+    const ENVIRONMENT_TEST       = 'test';
 
     const HOSTS = [
         self::ENVIRONMENT_PRODUCTION => 'appapi2.bankid.com',
-        self::ENVIRONMENT_TEST => 'appapi2.test.bankid.com',
+        self::ENVIRONMENT_TEST       => 'appapi2.test.bankid.com',
     ];
 
     private $httpClient;
@@ -27,50 +28,73 @@ class BankID
      * @param string $key
      * @param string $passphrase
      */
-    public function __construct($environment = self::ENVIRONMENT_TEST, $certificate = null, $caCertificate = null, $key = null, $passphrase = null)
-    {
+    public function __construct(
+        $environment = self::ENVIRONMENT_TEST,
+        $certificate = null,
+        $caCertificate = null,
+        $key = null,
+        $passphrase = null
+    ) {
         if (is_null($certificate)) {
-            $certificate = __DIR__.'/../certs/test.pem';
+            $certificate = __DIR__ . '/../certs/test.pem';
         }
 
-        if (! is_null($passphrase)) {
+        if (!is_null($passphrase)) {
             $certificate = [$certificate, $passphrase];
         }
 
         if (is_null($caCertificate)) {
-            $caCertificate = __DIR__.'/../certs/test_cacert.cer';
+            $caCertificate = __DIR__ . '/../certs/test_cacert.cer';
         }
 
         $httpOptions = [
-            'base_uri' => 'https://'.self::HOSTS[$environment].'/rp/v6.0/',
-            'cert' => $certificate,
-            'verify' => $caCertificate,
-            'headers' => [
+            'base_uri' => 'https://' . self::HOSTS[$environment] . '/rp/v6.0/',
+            'cert'     => $certificate,
+            'verify'   => $caCertificate,
+            'headers'  => [
                 'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
+                'Accept'       => 'application/json',
             ],
         ];
 
-        if (! is_null($key)) {
+        if (!is_null($key)) {
             $httpOptions['ssl_key'] = $key;
         }
 
         $this->httpClient = new Client($httpOptions);
     }
 
-	/**
+    /**
      * Authenticate a user using animated QR code.
      *
-	 * @param $endUserIp
-	 * @param $requirement
-	 * @param $userVisibleData
-	 * @param $userNonVisibleData
-	 * @param $userVisibleDataFormat
-	 *
-	 * @return BankIDResponse
-	 */
-    public function authenticate($endUserIp, $requirement = null, $userVisibleData = null, $userNonVisibleData = null, $userVisibleDataFormat = null)
-    {
+     * @param      $endUserIp
+     * @param null $requirement
+     * @param null $userVisibleData
+     * @param null $userNonVisibleData
+     * @param null $userVisibleDataFormat
+     * @param null $returnUrl
+     * @param null $returnRisk
+     * @param null $web
+     * @param null $app
+     *
+     * @return BankIDResponse
+     * @throws GuzzleException
+     */
+    public function authenticate(
+        $endUserIp,
+        $requirement = null,
+        $userVisibleData = null,
+        $userNonVisibleData = null,
+        $userVisibleDataFormat = null,
+        $returnUrl = null,
+        $returnRisk = null,
+        $web = null,
+        $app = null
+    ) {
+        if (!empty($web) && !empty($app)) {
+            throw new \InvalidArgumentException('You can only set either web or app, not both.');
+        }
+
         $payload['endUserIp'] = $endUserIp;
 
         if (!empty($requirement)) {
@@ -89,6 +113,22 @@ class BankID
             $payload['userVisibleDataFormat'] = $userVisibleDataFormat;
         }
 
+        if (!empty($returnUrl)) {
+            $payload['returnUrl'] = $returnUrl;
+        }
+
+        if (!empty($returnRisk)) {
+            $payload['returnRisk'] = $returnRisk;
+        }
+
+        if (!empty($web)) {
+            $payload['web'] = $web;
+        }
+
+        if (!empty($app)) {
+            $payload['app'] = $app;
+        }
+
         try {
             $httpResponse = $this->httpClient->post('auth', [
                 RequestOptions::JSON => $payload,
@@ -102,19 +142,24 @@ class BankID
         return new BankIDResponse(BankIDResponse::STATUS_PENDING, $httpResponseBody);
     }
 
-	/**
+    /**
      * Request a signing order for a user.
      *
-	 * @param $endUserIp
-	 * @param $userVisibleData
-	 * @param $userNonVisibleData
-	 * @param $requirement
-	 * @param $userVisibleDataFormat
-	 *
-	 * @return BankIDResponse
-	 */
-    public function sign($endUserIp, $userVisibleData, $requirement = null, $userNonVisibleData = null, $userVisibleDataFormat = null)
-    {
+     * @param $endUserIp
+     * @param $userVisibleData
+     * @param $userNonVisibleData
+     * @param $requirement
+     * @param $userVisibleDataFormat
+     *
+     * @return BankIDResponse
+     */
+    public function sign(
+        $endUserIp,
+        $userVisibleData,
+        $requirement = null,
+        $userNonVisibleData = null,
+        $userVisibleDataFormat = null
+    ) {
         try {
             $payload = [
                 'endUserIp' => $endUserIp,
@@ -145,23 +190,31 @@ class BankID
         return new BankIDResponse(BankIDResponse::STATUS_PENDING, $httpResponseBody);
     }
 
-	/**
-	 * Authenticate a user over phone.
-	 *
-	 * @param $personalNumber
-	 * @param $callInitiator
-	 * @param $requirement
-	 * @param $userVisibleData
-	 * @param $userNonVisibleData
-	 * @param $userVisibleDataFormat
-	 *
-	 * @return void
-	 */
-	public function phoneAuth($personalNumber, $callInitiator, $requirement = null, $userVisibleData = null, $userNonVisibleData = null, $userVisibleDataFormat = null) {
+    /**
+     * Authenticate a user over phone.
+     *
+     * @param $personalNumber
+     * @param $callInitiator
+     * @param $requirement
+     * @param $userVisibleData
+     * @param $userNonVisibleData
+     * @param $userVisibleDataFormat
+     *
+     * @return BankIDResponse
+     * @throws GuzzleException
+     */
+    public function phoneAuth(
+        $personalNumber,
+        $callInitiator,
+        $requirement = null,
+        $userVisibleData = null,
+        $userNonVisibleData = null,
+        $userVisibleDataFormat = null
+    ) {
         try {
             $payload = [
                 'personalNumber' => $personalNumber,
-                'callInitiator' => $callInitiator,
+                'callInitiator'  => $callInitiator,
             ];
 
             if (!empty($requirement)) {
@@ -190,25 +243,33 @@ class BankID
         $httpResponseBody = json_decode($httpResponse->getBody(), true);
 
         return new BankIDResponse(BankIDResponse::STATUS_PENDING, $httpResponseBody);
-	}
+    }
 
-	/**
-	 * Request a signing order for a user over the phone.
-	 *
-	 * @param $personalNumber
-	 * @param $callInitiator
-	 * @param $requirement
-	 * @param $userVisibleData
-	 * @param $userNonVisibleData
-	 * @param $userVisibleDataFormat
-	 *
-	 * @return void
-	 */
-	public function phoneSign($personalNumber, $callInitiator, $requirement = null, $userVisibleData = null, $userNonVisibleData = null, $userVisibleDataFormat = null) {
+    /**
+     * Request a signing order for a user over the phone.
+     *
+     * @param      $personalNumber
+     * @param      $callInitiator
+     * @param null $requirement
+     * @param null $userVisibleData
+     * @param null $userNonVisibleData
+     * @param null $userVisibleDataFormat
+     *
+     * @return BankIDResponse
+     * @throws GuzzleException
+     */
+    public function phoneSign(
+        $personalNumber,
+        $callInitiator,
+        $requirement = null,
+        $userVisibleData = null,
+        $userNonVisibleData = null,
+        $userVisibleDataFormat = null
+    ) {
         try {
             $payload = [
                 'personalNumber' => $personalNumber,
-                'callInitiator' => $callInitiator,
+                'callInitiator'  => $callInitiator,
             ];
 
             if (!empty($requirement)) {
@@ -237,7 +298,7 @@ class BankID
         $httpResponseBody = json_decode($httpResponse->getBody(), true);
 
         return new BankIDResponse(BankIDResponse::STATUS_PENDING, $httpResponseBody);
-	}
+    }
 
     /**
      * Collect an ongoing user request.
@@ -245,6 +306,7 @@ class BankID
      * @param $orderReference
      *
      * @return BankIDResponse
+     * @throws GuzzleException
      */
     public function collect($orderReference)
     {
@@ -269,6 +331,7 @@ class BankID
      * @param $orderReference
      *
      * @return BankIDResponse
+     * @throws GuzzleException
      */
     public function cancel($orderReference)
     {
